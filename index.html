@@ -23,6 +23,12 @@
     .card h2{font-size:18px;margin:0 0 18px;letter-spacing:-.02em}
     .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
     .grid-5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+    .manager-list{display:flex;flex-direction:column;gap:12px}
+    .manager-row{display:grid;grid-template-columns:54px repeat(5,minmax(0,1fr)) 70px;gap:10px;align-items:end}
+    .manager-seq{height:43px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:11px;background:#f8fafc;font-weight:800}
+    .manager-actions{display:flex;justify-content:flex-end;margin-top:14px}
+    .add-btn{background:var(--accent-soft);color:var(--accent)}
+    .remove-btn{background:#fff0f0;color:var(--danger);padding:11px 10px}
     label{display:flex;flex-direction:column;gap:8px;font-size:13px;font-weight:700;color:#374151}
     input,select,button,textarea{font:inherit}
     input,select,textarea{width:100%;border:1px solid #ccd4df;border-radius:11px;padding:12px 13px;background:#fff;color:var(--ink);outline:none}
@@ -62,6 +68,8 @@
     @media(max-width:760px){
       .hero{align-items:flex-start;flex-direction:column}
       .grid,.grid-5,.summary{grid-template-columns:1fr}
+      .manager-row{grid-template-columns:1fr}
+      .manager-seq{height:38px}
       .quarter-row{grid-template-columns:repeat(2,1fr)}
       h1{font-size:28px}
     }
@@ -75,7 +83,7 @@
       <h1>공사 현황 보고서 생성기</h1>
       <p>카카오톡 공사현황 로그를 정리해 연도별 공사 종합표를 생성합니다.</p>
     </div>
-    <span class="version">v0.2</span>
+    <span class="version">v0.3</span>
   </header>
 
   <form id="form">
@@ -124,14 +132,11 @@
 
     <section class="card">
       <h2>03. 안전보건총괄책임자</h2>
-      <div class="grid-5">
-        <label>대대<input id="battalion" placeholder="예: 시설대대"></label>
-        <label>직책<input id="position" placeholder="예: 대대장"></label>
-        <label>계급<input id="rank" placeholder="예: 중령"></label>
-        <label>성명<input id="name" placeholder="성명"></label>
-        <label>인사명령 근거<input id="orderBasis" placeholder="예: 인사명령 제00호"></label>
+      <div id="managerList" class="manager-list"></div>
+      <div class="manager-actions">
+        <button type="button" id="addManagerBtn" class="add-btn">+ 책임자 추가</button>
       </div>
-      <p class="note">이 정보는 다음 단계에서 ‘첫 장’ 시트에 연결됩니다. 현재 버전에서는 브라우저에 저장만 합니다.</p>
+      <p class="note">순번은 자동으로 부여됩니다. 책임자가 추가되면 첫 장에서 행이 늘어나며, 공사 목록은 남은 공간에 맞춰 다음 페이지로 이어집니다.</p>
     </section>
 
     <section id="previewCard" class="card hidden">
@@ -180,15 +185,59 @@
   }
 
   const saved = JSON.parse(localStorage.getItem('constructionReportSettings') || '{}');
-  ['battalion','position','rank','name','orderBasis'].forEach(id => {
-    if (saved[id]) $(id).value = saved[id];
-    $(id).addEventListener('input', saveSettings);
-  });
-  function saveSettings(){
-    const data = {};
-    ['battalion','position','rank','name','orderBasis'].forEach(id => data[id] = $(id).value);
-    localStorage.setItem('constructionReportSettings', JSON.stringify(data));
+  let managers = Array.isArray(saved.managers) && saved.managers.length
+    ? saved.managers
+    : [{
+        battalion:saved.battalion || '',
+        position:saved.position || '',
+        rank:saved.rank || '',
+        name:saved.name || '',
+        orderBasis:saved.orderBasis || ''
+      }];
+
+  function escapeAttr(s=''){
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
+
+  function renderManagers(){
+    $('managerList').innerHTML = managers.map((m,i) => `
+      <div class="manager-row" data-index="${i}">
+        <div class="manager-seq">${i+1}</div>
+        <label>대대<input data-field="battalion" value="${escapeAttr(m.battalion)}" placeholder="예: 공병대대"></label>
+        <label>직책<input data-field="position" value="${escapeAttr(m.position)}" placeholder="예: 대대장"></label>
+        <label>계급<input data-field="rank" value="${escapeAttr(m.rank)}" placeholder="예: 중령"></label>
+        <label>성명<input data-field="name" value="${escapeAttr(m.name)}" placeholder="성명"></label>
+        <label>인사명령 근거<input data-field="orderBasis" value="${escapeAttr(m.orderBasis)}" placeholder="예: 인사명령 제00호"></label>
+        <button type="button" class="remove-btn" data-remove="${i}" ${managers.length===1?'disabled':''}>삭제</button>
+      </div>`).join('');
+
+    document.querySelectorAll('#managerList input[data-field]').forEach(input => {
+      input.addEventListener('input', e => {
+        const row = e.target.closest('.manager-row');
+        managers[Number(row.dataset.index)][e.target.dataset.field] = e.target.value;
+        saveSettings();
+      });
+    });
+    document.querySelectorAll('[data-remove]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (managers.length <= 1) return;
+        managers.splice(Number(btn.dataset.remove),1);
+        saveSettings();
+        renderManagers();
+      });
+    });
+  }
+
+  function saveSettings(){
+    localStorage.setItem('constructionReportSettings', JSON.stringify({managers}));
+  }
+
+  $('addManagerBtn').addEventListener('click', () => {
+    managers.push({battalion:'',position:'',rank:'',name:'',orderBasis:''});
+    saveSettings();
+    renderManagers();
+  });
+  renderManagers();
 
   document.querySelectorAll('input[name="periodMode"]').forEach(el => el.addEventListener('change', e => {
     const custom = e.target.value === 'custom';
@@ -261,6 +310,12 @@
     return `${String(d.getFullYear()).slice(-2)}.${d.getMonth()+1}.${d.getDate()}.`;
   }
 
+  function formatKoreanDate(d){
+    if (!d) return '';
+    const days=['일','월','화','수','목','금','토'];
+    return `${String(d.getFullYear()).slice(-2)}. ${d.getMonth()+1}. ${d.getDate()}.(${days[d.getDay()]})`;
+  }
+
   function valueByAliases(obj, aliases){
     for (const key of aliases) {
       if (obj[key] !== undefined) return obj[key];
@@ -314,6 +369,7 @@
         changedAmount:parseNumber(valueByAliases(raw,['변경도급액','변경 도급액'])),
         completionAmount:parseNumber(valueByAliases(raw,['준공금액'])),
         company:valueByAliases(raw,['업체']),
+        riskFactor:valueByAliases(raw,['주요 위험요인','주요위험요인']),
         note:valueByAliases(raw,['비고'])
       };
       record.bidBalance = (record.initialAmount ?? 0) - (record.contractAmount ?? 0);
@@ -518,8 +574,167 @@
       ws.getCell(rowNo,14).alignment={horizontal:'left',vertical:'middle',wrapText:true};
       ws.getCell(rowNo,15).alignment={horizontal:'left',vertical:'middle',wrapText:true};
       [4,6,11,12,13].forEach(c=>ws.getCell(rowNo,c).numFmt='#,##0;[Red]-#,##0');
-      [5,7,8,9,10].forEach(c=>ws.getCell(rowNo,c).numFmt='yy.m.d.');
+      [5,7,8,9,10].forEach(c=>ws.getCell(rowNo,c).numFmt='yy". "m". "d".("aaa")"');
     }
+  }
+
+  function setMediumBottom(cell){
+    const b=cell.border || {};
+    cell.border={
+      top:b.top || {style:'thin',color:{argb:'FF000000'}},
+      left:b.left || {style:'thin',color:{argb:'FF000000'}},
+      right:b.right || {style:'thin',color:{argb:'FF000000'}},
+      bottom:{style:'medium',color:{argb:'FF000000'}}
+    };
+  }
+
+  function styleFirstSheetCell(cell, opts={}){
+    cell.font={name:'맑은 고딕',size:opts.size || 11,bold:!!opts.bold};
+    cell.alignment={
+      horizontal:opts.horizontal || 'center',
+      vertical:'middle',
+      wrapText:opts.wrap !== false
+    };
+    if(opts.fill) cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:opts.fill}};
+    if(opts.border) setBorder(cell,opts.border);
+  }
+
+  function mergeSafe(ws, range){
+    try { ws.mergeCells(range); } catch(e) {}
+  }
+
+  function buildBusinessHeader(ws, row){
+    mergeSafe(ws,`D${row}:F${row}`);
+    const headers=['순번','대대','작업장 위치','사업명(사업 개요)',null,null,'예산','계약 일자','종료 일자','주요\n위험요인'];
+    headers.forEach((v,i)=>{
+      const cell=ws.getCell(row,i+1);
+      if(v!==null) cell.value=v;
+      styleFirstSheetCell(cell,{bold:true,fill:'FFD9E2F3',border:'thin'});
+    });
+    ws.getRow(row).height=30;
+  }
+
+  function buildBusinessRows(ws, startRow, count, records, globalStartIndex){
+    for(let i=0;i<count;i++){
+      const row=startRow+i;
+      mergeSafe(ws,`D${row}:F${row}`);
+      ws.getRow(row).height=30;
+      for(let c=1;c<=10;c++){
+        const cell=ws.getCell(row,c);
+        styleFirstSheetCell(cell,{border:'thin'});
+      }
+      const r=records[i];
+      if(r){
+        ws.getCell(row,1).value=globalStartIndex+i+1;
+        ws.getCell(row,2).value='공병대대';
+        ws.getCell(row,3).value=r.location || '';
+        ws.getCell(row,4).value=r.title || '';
+        ws.getCell(row,7).value=r.contractAmount;
+        ws.getCell(row,8).value=excelDate(r.contractDate);
+        ws.getCell(row,9).value=excelDate(r.documentCompletionDate);
+        ws.getCell(row,10).value=r.riskFactor || '';
+        ws.getCell(row,7).numFmt='#,##0';
+        ws.getCell(row,8).numFmt='yy". "m". "d".("aaa")"';
+        ws.getCell(row,9).numFmt='yy". "m". "d".("aaa")"';
+      }
+      [3,4,10].forEach(c=>ws.getCell(row,c).alignment={horizontal:'center',vertical:'middle',wrapText:true});
+      if(i===count-1) for(let c=1;c<=10;c++) setMediumBottom(ws.getCell(row,c));
+    }
+  }
+
+  function buildFirstSheet(wb, state){
+    const ws=wb.addWorksheet('첫 장',{
+      pageSetup:{
+        paperSize:9,
+        orientation:'landscape',
+        fitToPage:true,
+        fitToWidth:1,
+        fitToHeight:0,
+        margins:{left:.2,right:.2,top:.3,bottom:.3,header:.1,footer:.1}
+      }
+    });
+
+    const widths=[7.25,11.125,19.875,14,9,9,11.625,11.25,11.25,14];
+    widths.forEach((w,i)=>ws.getColumn(i+1).width=w);
+
+    ws.getCell('A1').value='[붙임 2]';
+    ws.getCell('A1').font={name:'맑은 고딕',size:11};
+    ws.getCell('A1').alignment={vertical:'middle'};
+    mergeSafe(ws,'A2:J3');
+    ws.getCell('A2').value='[전기] 도급 · 용역 · 위탁시 안전 · 보건 활동 결과';
+    ws.getCell('A2').font={name:'맑은 고딕',size:24,bold:true};
+    ws.getCell('A2').alignment={horizontal:'center',vertical:'middle'};
+
+    const managerCount=Math.max(1,managers.length);
+    const managerTitleRow=5;
+    const managerHeaderRow=6;
+    const managerStartRow=7;
+    const businessTitleRow=9+(managerCount-1);
+    const businessHeaderRow=10+(managerCount-1);
+    const firstDataStart=11+(managerCount-1);
+    const firstPageEnd=20;
+    const firstCapacity=Math.max(0,firstPageEnd-firstDataStart+1);
+
+    mergeSafe(ws,`A${managerTitleRow}:C${managerTitleRow}`);
+    mergeSafe(ws,`D${managerTitleRow}:J${managerTitleRow}`);
+    ws.getCell(`A${managerTitleRow}`).value='1. 안전보건총괄책임자 지정 현황';
+    ws.getCell(`A${managerTitleRow}`).font={name:'맑은 고딕',size:14,bold:true};
+    ws.getCell(`D${managerTitleRow}`).value='* 해당사업을 주관하는 부대·부서의 장을 대상으로 사업별로 사업기간 동안 지정(인사명령)';
+    ws.getCell(`D${managerTitleRow}`).font={name:'맑은 고딕',size:11};
+    ws.getCell(`D${managerTitleRow}`).alignment={horizontal:'right',vertical:'middle'};
+    ws.getRow(managerTitleRow).height=25.5;
+
+    mergeSafe(ws,`D${managerHeaderRow}:E${managerHeaderRow}`);
+    mergeSafe(ws,`F${managerHeaderRow}:G${managerHeaderRow}`);
+    mergeSafe(ws,`H${managerHeaderRow}:J${managerHeaderRow}`);
+    ['순번','대대','직책','계급',null,'성명',null,'인사명령 근거'].forEach((v,i)=>{
+      const positions=[1,2,3,4,5,6,7,8];
+      const cell=ws.getCell(managerHeaderRow,positions[i]);
+      if(v!==null) cell.value=v;
+    });
+    for(let c=1;c<=10;c++) styleFirstSheetCell(ws.getCell(managerHeaderRow,c),{fill:'FFD9E2F3',border:'thin'});
+    ws.getRow(managerHeaderRow).height=22;
+
+    managers.forEach((m,i)=>{
+      const row=managerStartRow+i;
+      mergeSafe(ws,`D${row}:E${row}`);
+      mergeSafe(ws,`F${row}:G${row}`);
+      mergeSafe(ws,`H${row}:J${row}`);
+      for(let c=1;c<=10;c++) styleFirstSheetCell(ws.getCell(row,c),{border:'thin'});
+      ws.getCell(row,1).value=i+1;
+      ws.getCell(row,2).value=m.battalion || '';
+      ws.getCell(row,3).value=m.position || '';
+      ws.getCell(row,4).value=m.rank || '';
+      ws.getCell(row,6).value=m.name || '';
+      ws.getCell(row,8).value=m.orderBasis || '';
+      ws.getRow(row).height=24;
+      if(i===managers.length-1) for(let c=1;c<=10;c++) setMediumBottom(ws.getCell(row,c));
+    });
+
+    mergeSafe(ws,`A${businessTitleRow}:J${businessTitleRow}`);
+    ws.getCell(`A${businessTitleRow}`).value='2. 도급 · 용역 · 위탁 사업 현황';
+    ws.getCell(`A${businessTitleRow}`).font={name:'맑은 고딕',size:14,bold:true};
+    ws.getCell(`A${businessTitleRow}`).alignment={horizontal:'left',vertical:'middle'};
+    ws.getRow(businessTitleRow).height=25.5;
+
+    buildBusinessHeader(ws,businessHeaderRow);
+    const firstRecords=state.periodSelected.slice(0,firstCapacity);
+    buildBusinessRows(ws,firstDataStart,firstCapacity,firstRecords,0);
+
+    let used=firstCapacity;
+    let pageStart=21;
+    while(used < state.periodSelected.length){
+      ws.getRow(pageStart-1).addPageBreak();
+      buildBusinessHeader(ws,pageStart);
+      const chunk=state.periodSelected.slice(used,used+14);
+      buildBusinessRows(ws,pageStart+1,14,chunk,used);
+      used += 14;
+      pageStart += 15;
+    }
+
+    const lastRow=state.periodSelected.length>firstCapacity ? pageStart-1 : 20;
+    ws.pageSetup.printArea=`A1:J${lastRow}`;
+    return ws;
   }
 
   function createWorkbook(state){
@@ -548,18 +763,7 @@
     ws.pageSetup.printArea=`A1:O${pageCount*43}`;
     ws.autoFilter = {from:{row:2,column:1},to:{row:2,column:15}};
 
-    // 다음 단계에서 구현할 시트 자리
-    const first = wb.addWorksheet('첫 장');
-    first.getCell('A1').value='다음 단계에서 구현 예정';
-    first.getCell('A1').font={name:'맑은 고딕',size:14,bold:true,color:{argb:'FF7A7A7A'}};
-    first.getCell('A3').value='안전보건총괄책임자 입력값';
-    first.getCell('A4').value='대대'; first.getCell('B4').value=$('battalion').value;
-    first.getCell('A5').value='직책'; first.getCell('B5').value=$('position').value;
-    first.getCell('A6').value='계급'; first.getCell('B6').value=$('rank').value;
-    first.getCell('A7').value='성명'; first.getCell('B7').value=$('name').value;
-    first.getCell('A8').value='인사명령 근거'; first.getCell('B8').value=$('orderBasis').value;
-    first.getColumn(1).width=20; first.getColumn(2).width=34;
-    first.state='hidden';
+    buildFirstSheet(wb,state);
 
     return wb;
   }
