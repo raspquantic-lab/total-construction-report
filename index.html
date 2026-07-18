@@ -324,12 +324,19 @@
   }
 
   function parseLogs(text){
-    const markers = [...text.matchAll(/\[공사현황\]/g)].map(m => m.index);
+    // 카카오톡 TXT의 BOM·제로폭 문자·괄호 사이 공백까지 허용한다.
+    const normalized = String(text || '')
+      .replace(/^\uFEFF/, '')
+      .replace(/[\u200B-\u200D\u2060]/g, '')
+      .replace(/［/g, '[').replace(/］/g, ']');
+
+    const markerRegex = /\[\s*공사\s*현황\s*\]/g;
+    const matches = [...normalized.matchAll(markerRegex)];
     const blocks = [];
-    for (let i=0; i<markers.length; i++) {
-      const start = markers[i] + '[공사현황]'.length;
-      const end = i+1 < markers.length ? markers[i+1] : text.length;
-      blocks.push(text.slice(start, end));
+    for (let i=0; i<matches.length; i++) {
+      const start = matches[i].index + matches[i][0].length;
+      const end = i+1 < matches.length ? matches[i+1].index : normalized.length;
+      blocks.push(normalized.slice(start, end));
     }
 
     const rows = [];
@@ -421,7 +428,12 @@
   function analyze(){
     if (!fileText) throw new Error('먼저 카카오톡 TXT 로그를 올려주세요.');
     const parsed = parseLogs(fileText);
-    if (!parsed.length) throw new Error('[공사현황] 형식의 자료를 찾지 못했습니다.');
+    if (!parsed.length) {
+      const markerCount = (String(fileText || '').match(/공사\s*현황/g) || []).length;
+      throw new Error(markerCount
+        ? `공사현황 표식은 ${markerCount}개 찾았지만 공사명 또는 계약번호를 읽지 못했습니다.`
+        : '[공사현황] 형식의 자료를 찾지 못했습니다.');
+    }
     const unique = dedupe(parsed);
     const year = Number($('year').value);
     const period = getSelectedPeriod();
