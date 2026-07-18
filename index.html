@@ -586,6 +586,35 @@
     return dates;
   }
 
+  function clearInnerBorders(ws, r1, c1, r2, c2) {
+    for (let r=r1; r<=r2; r++) {
+      for (let c=c1; c<=c2; c++) {
+        const cell=ws.getCell(r,c);
+        const b={...(cell.border||{})};
+        if (c<c2) delete b.right;
+        if (c>c1) delete b.left;
+        if (r<r2) delete b.bottom;
+        if (r>r1) delete b.top;
+        cell.border=b;
+      }
+    }
+  }
+
+  function applyShadowOutline(ws, r1, c1, r2, c2) {
+    const thin={style:'thin',color:{argb:'FF000000'}};
+    const medium={style:'medium',color:{argb:'FF000000'}};
+    for (let c=c1; c<=c2; c++) {
+      const top=ws.getCell(r1,c), bottom=ws.getCell(r2,c);
+      top.border={...(top.border||{}),top:thin};
+      bottom.border={...(bottom.border||{}),bottom:medium};
+    }
+    for (let r=r1; r<=r2; r++) {
+      const left=ws.getCell(r,c1), right=ws.getCell(r,c2);
+      left.border={...(left.border||{}),left:thin};
+      right.border={...(right.border||{}),right:medium};
+    }
+  }
+
   async function buildBodySheet(wb, state) {
     const templateWb = new ExcelJS.Workbook();
     await templateWb.xlsx.load(base64ToArrayBuffer(BODY_TEMPLATE_BASE64));
@@ -645,6 +674,7 @@
       const completion = project.actualCompletionDate || project.inspectionCompletionDate || project.documentCompletionDate;
 
       ws.getCell(start,1).value = `${3+index}. 안전 · 보건 활동 내용`;
+      ws.getCell(start+1,2).value = project.title || '';
       ws.getCell(start+4,3).value = actualStart && completion && Math.round((completion-actualStart)/86400000) <= 60
         ? '□ 30일 이내 종료되는 공사로 안전보건 협의체 구성 제외(연간 총 작업일수 60일 이하)'
         : '□ 안전보건 협의체 운영내용 일지 별도 작성';
@@ -672,6 +702,19 @@
       }
       ws.getCell(start+29,4).value = project.supervisor || '';
 
+      // 원본 테마색은 Office 테마에 따라 살구색 등으로 달라질 수 있어 고정 파란색으로 통일한다.
+      ['A3','B3','C3'].forEach(ref => {
+        const shifted=ref.replace(/(\d+)/, (_,n)=>String(Number(n)+offset));
+        ws.getCell(shifted).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFD9E2F3'}};
+      });
+
+      // C17:D19 내부 구분선은 제거하고, 각 페이지 본문 외곽은 위·왼쪽 얇게 / 아래·오른쪽 굵게 처리한다.
+      clearInnerBorders(ws,start+16,3,start+18,4);
+      applyShadowOutline(ws,start+2,1,start+4,6);
+      applyShadowOutline(ws,start+6,1,start+19,6);
+      applyShadowOutline(ws,start+21,1,start+36,6);
+      applyShadowOutline(ws,start+38,1,start+39,6);
+
       // 각 공사 4페이지: 1~5, 7~20, 22~37, 39~40. 빈 행은 페이지 사이 여백이다.
       ws.getRow(start+5).addPageBreak();
       ws.getRow(start+20).addPageBreak();
@@ -685,7 +728,7 @@
     return ws;
   }
 
-  const TEMPLATE_GREEN_FILL = {theme:9,tint:0.4};
+  const TEMPLATE_BLUE_FILL = {argb:'FFD9E2F3'};
 
   function buildPage(ws, startRow, rows, year, pageNo, totalPages){
     const titleRow = startRow;
@@ -704,7 +747,7 @@
       const cell=ws.getCell(headerRow,i+1);
       cell.value=h;
       cell.font={name:'맑은 고딕',size:9,bold:true};
-      cell.fill={type:'pattern',pattern:'solid',fgColor:{...TEMPLATE_GREEN_FILL}};
+      cell.fill={type:'pattern',pattern:'solid',fgColor:{...TEMPLATE_BLUE_FILL}};
       cell.alignment={horizontal:'center',vertical:'middle',wrapText:true};
       setBorder(cell,'thin');
     });
@@ -778,7 +821,7 @@
     headers.forEach((v,i)=>{
       const cell=ws.getCell(row,i+1);
       if(v!==null) cell.value=v;
-      styleFirstSheetCell(cell,{bold:true,fill:TEMPLATE_GREEN_FILL,border:'thin'});
+      styleFirstSheetCell(cell,{bold:true,fill:TEMPLATE_BLUE_FILL,border:'thin'});
     });
     ws.getRow(row).height=30;
     setMediumRight(ws.getCell(row,10));
@@ -871,7 +914,7 @@
       const cell=ws.getCell(managerHeaderRow,positions[i]);
       if(v!==null) cell.value=v;
     });
-    for(let c=1;c<=10;c++) styleFirstSheetCell(ws.getCell(managerHeaderRow,c),{fill:TEMPLATE_GREEN_FILL,border:'thin'});
+    for(let c=1;c<=10;c++) styleFirstSheetCell(ws.getCell(managerHeaderRow,c),{fill:TEMPLATE_BLUE_FILL,border:'thin'});
     setMediumRight(ws.getCell(managerHeaderRow,10));
     ws.getRow(managerHeaderRow).height=16.5;
 
